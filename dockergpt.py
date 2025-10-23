@@ -22,7 +22,7 @@ while(model_choice != 0 and model_choice != 1):
             model_name='qwen3:1.7b',
             provider=OllamaProvider(base_url='http://localhost:11434/v1'),
         )
-        agent = Agent(ollama_model, system_prompt=['The final output given to the user must only be docker command(s)', 'The final command is to be given to the user directly as a string in the response, you do not have to give the user the output of the command'], output_type=[str, DeferredToolRequests])
+        agent = Agent(ollama_model, system_prompt=['The final output given to the user must only be docker command(s)', 'The final command is to be given to the user directly as a string in the response, you do not have to give the user the output of the command', 'Use the gather_context tool available to fill in required container IDs and other command specific information if required/possible.'], output_type=[str, DeferredToolRequests])
     elif model_choice == 1:
         model = GoogleModel('gemini-2.5-flash', provider=GoogleProvider(api_key=getenv("GOOGLE_API_KEY")))
         agent = Agent(model,system_prompt=['The final output given to the user must only be docker command(s)', 'The final command is to be given to the user directly as a string in the response, you do not have to give the user the output of the command', 'Use the gather_context tool available to fill in required container IDs and other command specific information if required/possible.'], output_type=[str, DeferredToolRequests])
