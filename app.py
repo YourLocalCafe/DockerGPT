@@ -51,6 +51,41 @@ def run_agent_async(async_func, **kwargs):
         if loop is not None:
             loop.close()
 
+async def validate_google_api_key(api_key: str) -> tuple[bool, str]:
+    """
+    Validate Google API key by making a test request.
+    
+    Args:
+        api_key: The Google API key to validate
+        
+    Returns:
+        tuple: (is_valid, error_message)
+    """
+    try:
+        # Create a test model with the API key
+        test_model = GoogleModel(
+            'gemini-2.5-flash',
+            provider=GoogleProvider(api_key=api_key)
+        )
+        
+        # Create a minimal agent for testing
+        test_agent = Agent(test_model)
+        
+        # Make a simple test request
+        result = await test_agent.run("Hello")
+        
+        return True, "API key is valid"
+    except Exception as e:
+        error_msg = str(e)
+        if "API_KEY_INVALID" in error_msg or "invalid" in error_msg.lower():
+            return False, "Invalid API key"
+        elif "quota" in error_msg.lower():
+            return False, "API key quota exceeded"
+        elif "permission" in error_msg.lower():
+            return False, "API key lacks required permissions"
+        else:
+            return False, f"Validation failed: {error_msg}"
+
 # Page config
 st.set_page_config(page_title="DockerGPT", page_icon="🐳", layout="wide")
 
@@ -70,20 +105,26 @@ if "google_api_key" not in st.session_state:
     st.session_state.google_api_key = getenv("GOOGLE_API_KEY", "")
 if "model_choice" not in st.session_state:
     st.session_state.model_choice = None
-
 if "show_api_key_input" not in st.session_state:
     st.session_state.show_api_key_input = False
 if "last_approved_command" not in st.session_state:
     st.session_state.last_approved_command = None
+if "api_key_validated" not in st.session_state:
+    st.session_state.api_key_validated = False
+if "api_key_invalid" not in st.session_state:
+    st.session_state.api_key_invalid = False
+if "agent_message_history" not in st.session_state:
+    st.session_state.agent_message_history = []
 
 def gather_context(command: str) -> str:
     """
     This tool MUST ONLY be used to gather context from the user's Docker environment.
     ONLY call this tool for contextual questions.
     It must never execute final commands.
+    This tool will execute an arbitrary command on the user machine's CLI.
     
     Args:
-        command: The command to gather required context from the user's machine.
+        command: The CLI command to gather required context from the user's machine.
     """
     result = run(command, shell=True, capture_output=True, text=True)
     if result.stderr:
@@ -161,7 +202,14 @@ with st.sidebar:
         elif model_choice == "Remote (Google Gemini)":
             st.markdown("### API Key Configuration")
             
-            if not st.session_state.google_api_key:
+            # Check if we need to force API key update due to invalid key
+            if st.session_state.api_key_invalid:
+                st.error("⚠️ Your current API key is invalid. Please enter a valid API key to continue.")
+                st.session_state.google_api_key = ""
+                st.session_state.api_key_validated = False
+                st.session_state.api_key_invalid = False
+            
+            if not st.session_state.google_api_key or not st.session_state.api_key_validated:
                 api_key_input = st.text_input(
                     "Google API Key",
                     type="password",
@@ -170,9 +218,19 @@ with st.sidebar:
                 )
                 
                 if api_key_input:
-                    st.session_state.google_api_key = api_key_input
+                    if st.button("Validate API Key", type="secondary"):
+                        with st.spinner("Validating API key..."):
+                            is_valid, message = run_agent_async(validate_google_api_key, api_key=api_key_input)
+                            
+                            if is_valid:
+                                st.session_state.google_api_key = api_key_input
+                                st.session_state.api_key_validated = True
+                                st.success(f"✅ {message}")
+                            else:
+                                st.error(f"❌ {message}")
+                                st.session_state.api_key_validated = False
             else:
-                st.success("✅ API Key configured")
+                st.success("✅ API Key validated")
                 if st.button("Update API Key"):
                     st.session_state.show_api_key_input = True
                 
@@ -184,12 +242,19 @@ with st.sidebar:
                     )
                     col1, col2 = st.columns(2)
                     with col1:
-                        if st.button("Save"):
+                        if st.button("Validate & Save"):
                             if new_api_key:
-                                st.session_state.google_api_key = new_api_key
-                                st.session_state.show_api_key_input = False
-                                st.success("API Key updated!")
-                                st.rerun()
+                                with st.spinner("Validating new API key..."):
+                                    is_valid, message = run_agent_async(validate_google_api_key, api_key=new_api_key)
+                                    
+                                    if is_valid:
+                                        st.session_state.google_api_key = new_api_key
+                                        st.session_state.api_key_validated = True
+                                        st.session_state.show_api_key_input = False
+                                        st.success("API Key validated and updated!")
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ {message}")
                             else:
                                 st.error("Please enter a valid API key")
                     with col2:
@@ -200,7 +265,7 @@ with st.sidebar:
         # Only show initialize button if we have required credentials
         can_initialize = (
             model_choice == "Local (Ollama)" or 
-            (model_choice == "Remote (Google Gemini)" and st.session_state.google_api_key)
+            (model_choice == "Remote (Google Gemini)" and st.session_state.api_key_validated)
         )
         
         if can_initialize:
@@ -215,9 +280,19 @@ with st.sidebar:
                         st.success(f"Agent initialized with {model_choice}!")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Failed to initialize agent: {str(e)}")
+                        error_msg = str(e)
+                        if "API_KEY_INVALID" in error_msg or "invalid" in error_msg.lower():
+                            st.error("❌ API key is invalid. Please update your API key.")
+                            st.session_state.api_key_invalid = True
+                            st.session_state.api_key_validated = False
+                            st.rerun()
+                        else:
+                            st.error(f"Failed to initialize agent: {error_msg}")
         elif model_choice == "Remote (Google Gemini)":
-            st.warning("⚠️ Please enter your Google API Key to continue")
+            if not st.session_state.google_api_key:
+                st.warning("⚠️ Please enter your Google API Key to continue")
+            else:
+                st.warning("⚠️ Please validate your Google API Key to continue")
     else:
         st.success("✅ Agent Ready")
         
@@ -234,12 +309,19 @@ with st.sidebar:
                 )
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button("Save", key="save_running"):
+                    if st.button("Validate & Save", key="save_running"):
                         if new_api_key:
-                            st.session_state.google_api_key = new_api_key
-                            st.session_state.show_api_key_input = False
-                            st.info("API Key updated. Reset agent to use the new key.")
-                            st.rerun()
+                            with st.spinner("Validating new API key..."):
+                                is_valid, message = run_agent_async(validate_google_api_key, api_key=new_api_key)
+                                
+                                if is_valid:
+                                    st.session_state.google_api_key = new_api_key
+                                    st.session_state.api_key_validated = True
+                                    st.session_state.show_api_key_input = False
+                                    st.info("API Key validated and updated. Reset agent to use the new key.")
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ {message}")
                         else:
                             st.error("Please enter a valid API key")
                 with col2:
@@ -253,6 +335,7 @@ with st.sidebar:
             st.session_state.messages = []
             st.session_state.pending_approval = None
             st.session_state.result = None
+            st.session_state.agent_message_history = []
             st.rerun()
     
     st.markdown("---")
@@ -304,6 +387,8 @@ else:
                                 deferred_tool_results=approval_data["approval_results"]
                             )
                             st.session_state.result = result
+                            # Update message history with the result
+                            st.session_state.agent_message_history = result.all_messages()
                         st.rerun()
                 
                 with col2:
@@ -364,7 +449,12 @@ else:
         # Get agent response
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                result = run_agent_async(st.session_state.agent.run, user_prompt=prompt)
+                # Pass message history for conversation persistence
+                result = run_agent_async(
+                    st.session_state.agent.run, 
+                    user_prompt=prompt,
+                    message_history=st.session_state.agent_message_history
+                )
                 
                 # Check if we need approval
                 if isinstance(result.output, DeferredToolRequests):
@@ -376,4 +466,6 @@ else:
                     st.rerun()
                 else:
                     st.session_state.result = result
+                    # Update message history
+                    st.session_state.agent_message_history = result.all_messages()
                     st.rerun()
