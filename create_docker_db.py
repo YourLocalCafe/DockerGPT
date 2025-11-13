@@ -4,14 +4,13 @@ import chromadb
 import os
 import shutil
 
-# --- Configuration ---
+
 DB_PATH = "./chroma_docker_db"
 COLLECTION_NAME = "docker_help"
 
 def get_main_subcommands() -> list[str]:
     """
-    Runs 'docker --help' and parses its output to find all
-    available subcommands. This version is more robust.
+    Runs 'docker --help' 
     """
     print("Fetching main 'docker --help' to find subcommands...")
     try:
@@ -22,19 +21,17 @@ def get_main_subcommands() -> list[str]:
         output = result.stdout
         
         commands = []
-        # Find all lines under "Commands:" and "Management Commands:" sections
-        # This regex finds the section, then we parse it line-by-line
+        
+        
         for section in re.findall(r"(?:Commands|Management Commands):\n([\s\S]*?)(?:\n\n|\Z)", output):
-            # For each line in that section...
+            
             for line in section.strip().split('\n'):
-                # ...find the first "word" on the line.
-                # This regex matches: optional spaces, then the command (which can have '-', '*'),
-                # then it stops.
+                
                 match = re.match(r"^\s+([a-zA-Z0-9-\*]+)", line)
                 if match:
-                    # Get command, remove the asterisk (like 'buildx*')
+                    
                     command_name = match.group(1).replace('*', '') 
-                    if command_name: # Ensure it's not empty
+                    if command_name: 
                         commands.append(command_name)
         
         unique_commands = sorted(list(set(commands)))
@@ -59,18 +56,10 @@ def get_main_subcommands() -> list[str]:
         return []
 
 def get_help_text(command_name: str | None) -> str:
-    """
-    Fetches the help text for a specific docker command.
-    'None' fetches the main 'docker --help'.
     
-    Handles commands that print help to stderr.
-    """
     command = f"docker {command_name} --help" if command_name else "docker --help"
     try:
-        # We explicitly capture stdout and stderr without using 'capture_output'
-        # to avoid the argument conflict.
-        # We also do NOT use 'check=True', as many help commands print
-        # to stderr and return a non-zero exit code.
+        
         result = subprocess.run(
             command, 
             shell=True, 
@@ -80,28 +69,26 @@ def get_help_text(command_name: str | None) -> str:
             encoding='utf-8'
         )
         
-        # If stdout has content, it's the primary source.
+        
         if result.stdout:
             return result.stdout
         
-        # If stdout is empty, but stderr has content, it's likely
-        # a management command (like 'docker container') printing its help.
+        
+        
         if result.stderr:
             return result.stderr
             
-        # If both are empty, something's wrong, return empty string
+        
         return ""
         
     except Exception as e:
-        # This is for other unexpected errors
+        
         print(f"Error fetching help for '{command}': {e}")
         return ""
 
 def chunk_help_text(command_name: str | None, help_text: str) -> tuple[list, list, list]:
     """
     Creates a single chunk containing the entire help text for a command.
-    This prevents flags from being separated and mixed up between commands.
-    Returns lists of documents, metadatas, and ids.
     """
     base_command = f"docker {command_name}" if command_name else "docker"
     documents, metadatas, ids = [], [], []
@@ -118,9 +105,7 @@ def chunk_help_text(command_name: str | None, help_text: str) -> tuple[list, lis
     return documents, metadatas, ids
 
 def create_docker_help_db():
-    """
-    Main orchestration function.
-    """
+    
     if os.path.exists(DB_PATH):
         print(f"Database path '{DB_PATH}' already exists.")
         user_input = input("  Delete and re-create? (y/N): ").strip().lower()
@@ -134,15 +119,15 @@ def create_docker_help_db():
 
     print(f"Creating new database at: {DB_PATH}")
     client = chromadb.PersistentClient(path=DB_PATH)
-    # Use 'get_or_create' for safety
+    
     collection = client.get_or_create_collection(COLLECTION_NAME)
     
-    # Get list of commands to process
-    # Start with the main 'docker --help' (represented by None)
+    
+    
     commands_to_process = [None] 
     commands_to_process.extend(get_main_subcommands())
     
-    if len(commands_to_process) == 1: # Only [None]
+    if len(commands_to_process) == 1: 
         print("No subcommands found. Halting.")
         return
 
@@ -151,13 +136,13 @@ def create_docker_help_db():
         command_display = cmd if cmd else "docker (main)"
         print(f"\n--- Processing ({i+1}/{len(commands_to_process)}): {command_display} ---")
         
-        # 1. Get Help Text
+
         help_text = get_help_text(cmd)
         if not help_text.strip():
             print(f"Skipping {command_display}, no help text found.")
             continue
             
-        # 2. Create single chunk with complete help text
+        
         docs, metas, ids = chunk_help_text(cmd, help_text)
         
         if not docs:
@@ -166,17 +151,17 @@ def create_docker_help_db():
             
         print(f"Generated {len(docs)} document chunk (complete help text).")
         
-        # 3. Add to Chroma
+        
         try:
-            # Use 'upsert' to avoid issues with potential duplicate IDs from parsing
-            # if the script is re-run without deleting.
+            
+            .
             collection.upsert(documents=docs, metadatas=metas, ids=ids)
             total_chunks += len(docs)
         except Exception as e:
             print(f"Error adding to ChromaDB: {e}")
             print("This can happen with duplicate IDs from parsing. Check parser if errors persist.")
 
-    print(f"\n🎉 Successfully created ChromaDB collection '{COLLECTION_NAME}'")
+    print(f"\n Successfully created ChromaDB collection '{COLLECTION_NAME}'")
     print(f"   at '{DB_PATH}' with {total_chunks} document chunks.")
     return collection
 
@@ -184,7 +169,7 @@ def query_db(collection, query_text: str, n: int = 3):
     """
     Helper function to test the database with a query.
     """
-    print(f"\n🔍 Querying for: '{query_text}'")
+    print(f"\n Querying for: '{query_text}'")
     results = collection.query(
         query_texts=[query_text],
         n_results=n
@@ -201,12 +186,12 @@ def query_db(collection, query_text: str, n: int = 3):
         print(f"    Type:    {meta.get('type')}")
         print(f"    Text:    \"{doc[:150].strip()}...\"")
 
-# --- Main Execution ---
+
 if __name__ == "__main__":
-    # 1. Create the database
+    
     docker_collection = create_docker_help_db()
     
-    # 2. Run some example queries
+    
     if docker_collection:
         query_db(docker_collection, "how to run a container in the background")
         query_db(docker_collection, "what does the --rm flag do on docker run")
