@@ -12,18 +12,16 @@ import asyncio
 import threading
 from typing import Any, Coroutine
 
-# Load environment variables
+
 load_dotenv()
 
-# Configure logfire
+
 logfire.configure(token=getenv("LOGFIRE_WRITE_TOKEN"))
 logfire.instrument_pydantic_ai()
 
 
 class EventLoopThread:
-    """
-    A dedicated thread that runs an event loop.
-    """
+    
     def __init__(self):
         self.loop = None
         self.thread = None
@@ -47,9 +45,7 @@ class EventLoopThread:
         self._started = True
     
     def run_coroutine(self, coro: Coroutine) -> Any:
-        """
-        Run a coroutine in the event loop thread and return the result.
-        """
+        
         if not self._started:
             self.start()
         
@@ -57,7 +53,7 @@ class EventLoopThread:
         return future.result()
     
     def stop(self):
-        """Stop the event loop and thread."""
+        
         if self.loop and self._started:
             self.loop.call_soon_threadsafe(self.loop.stop)
             self.thread.join(timeout=5)
@@ -70,22 +66,12 @@ if "event_loop_thread" not in st.session_state:
 
 
 def run_async(coro: Coroutine) -> Any:
-    """
-    Run an async coroutine using the dedicated event loop thread.
-    """
+    
     return st.session_state.event_loop_thread.run_coroutine(coro)
 
 
 async def validate_google_api_key(api_key: str) -> tuple[bool, str]:
-    """
-    Validate Google API key by making a test request.
     
-    Args:
-        api_key: The Google API key to validate
-        
-    Returns:
-        tuple: (is_valid, error_message)
-    """
     try:
         test_model = GoogleModel(
             'gemini-2.5-flash',
@@ -192,7 +178,7 @@ if "agent_message_history" not in st.session_state:
     st.session_state.agent_message_history = []
 
 with st.sidebar:
-    st.title("🐳 DockerGPT")
+    st.title(" DockerGPT")
     st.markdown("---")
     
     if not st.session_state.model_selected:
@@ -207,14 +193,14 @@ with st.sidebar:
         st.markdown("---")
         
         if model_choice == "Local (Ollama)":
-            st.info("### 📋 Ollama Setup Instructions")
+            st.info("###  Ollama Setup Instructions")
             st.markdown("""
             **Installation:**
             1. Visit [ollama.ai](https://ollama.ai) to download Ollama
             2. Install and start Ollama
             3. Run: `ollama pull qwen3:1.7b`
             
-            **⚠️ Disclaimer:**
+            ** Disclaimer:**
             The qwen3:1.7b model (~1GB) will be downloaded automatically if not present. Ensure you have sufficient disk space and a stable internet connection.
             """)
         
@@ -222,7 +208,7 @@ with st.sidebar:
             st.markdown("### API Key Configuration")
             
             if st.session_state.api_key_invalid:
-                st.error("⚠️ Your current API key is invalid. Please enter a valid API key to continue.")
+                st.error(" Your current API key is invalid. Please enter a valid API key to continue.")
                 st.session_state.google_api_key = ""
                 st.session_state.api_key_validated = False
                 st.session_state.api_key_invalid = False
@@ -244,15 +230,15 @@ with st.sidebar:
                                 if is_valid:
                                     st.session_state.google_api_key = api_key_input
                                     st.session_state.api_key_validated = True
-                                    st.success(f"✅ {message}")
+                                    st.success(f" {message}")
                                 else:
-                                    st.error(f"❌ {message}")
+                                    st.error(f" {message}")
                                     st.session_state.api_key_validated = False
                             except Exception as e:
-                                st.error(f"❌ Validation error: {str(e)}")
+                                st.error(f" Validation error: {str(e)}")
                                 st.session_state.api_key_validated = False
             else:
-                st.success("✅ API Key validated")
+                st.success(" API Key validated")
                 if st.button("Update API Key"):
                     st.session_state.show_api_key_input = True
                 
@@ -277,9 +263,9 @@ with st.sidebar:
                                             st.success("API Key validated and updated!")
                                             st.rerun()
                                         else:
-                                            st.error(f"❌ {message}")
+                                            st.error(f" {message}")
                                     except Exception as e:
-                                        st.error(f"❌ Validation error: {str(e)}")
+                                        st.error(f" Validation error: {str(e)}")
                             else:
                                 st.error("Please enter a valid API key")
                     with col2:
@@ -306,7 +292,7 @@ with st.sidebar:
                     except Exception as e:
                         error_msg = str(e)
                         if "API_KEY_INVALID" in error_msg or "invalid" in error_msg.lower():
-                            st.error("❌ API key is invalid. Please update your API key.")
+                            st.error(" API key is invalid. Please update your API key.")
                             st.session_state.api_key_invalid = True
                             st.session_state.api_key_validated = False
                             st.rerun()
@@ -314,11 +300,11 @@ with st.sidebar:
                             st.error(f"Failed to initialize agent: {error_msg}")
         elif model_choice == "Remote (Google Gemini)":
             if not st.session_state.google_api_key:
-                st.warning("⚠️ Please enter your Google API Key to continue")
+                st.warning(" Please enter your Google API Key to continue")
             else:
-                st.warning("⚠️ Please validate your Google API Key to continue")
+                st.warning(" Please validate your Google API Key to continue")
     else:
-        st.success("✅ Agent Ready")
+        st.success(" Agent Ready")
         
         if st.session_state.model_choice == "Remote (Google Gemini)":
             if st.button("Update API Key"):
@@ -345,9 +331,9 @@ with st.sidebar:
                                         st.info("API Key validated and updated. Reset agent to use the new key.")
                                         st.rerun()
                                     else:
-                                        st.error(f"❌ {message}")
+                                        st.error(f" {message}")
                                 except Exception as e:
-                                    st.error(f"❌ Validation error: {str(e)}")
+                                    st.error(f" Validation error: {str(e)}")
                         else:
                             st.error("Please enter a valid API key")
                 with col2:
@@ -376,7 +362,7 @@ with st.sidebar:
 st.title("DockerGPT")
 
 if not st.session_state.model_selected:
-    st.info("👈 Please select and initialize a model from the sidebar to begin.")
+    st.info(" Please select and initialize a model from the sidebar to begin.")
 else:
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
@@ -385,7 +371,7 @@ else:
     if st.session_state.pending_approval:
         approval_data = st.session_state.pending_approval
         
-        st.warning("⚠️ The agent is requesting permission to execute a command")
+        st.warning(" The agent is requesting permission to execute a command")
         
         for call in approval_data["requests"].approvals:
             with st.container():
@@ -394,7 +380,7 @@ else:
                 
                 col1, col2 = st.columns([1, 1])
                 with col1:
-                    if st.button("✅ Approve", key=f"approve_{call.tool_call_id}", type="primary", use_container_width=True):
+                    if st.button(" Approve", key=f"approve_{call.tool_call_id}", type="primary", use_container_width=True):
                         approval_data["approval_results"].approvals[call.tool_call_id] = True
                         if isinstance(call.args, dict):
                             st.session_state.last_approved_command = call.args.get('command', '')
@@ -414,17 +400,17 @@ else:
                                 st.session_state.agent_message_history = result.all_messages()
                             except Exception as e:
                                 error_msg = str(e)
-                                st.error(f"❌ Error during agent execution: {error_msg}")
+                                st.error(f" Error during agent execution: {error_msg}")
                                 st.session_state.messages.append({
                                     "role": "assistant", 
-                                    "content": f"❌ I encountered an error: {error_msg}"
+                                    "content": f" I encountered an error: {error_msg}"
                                 })
                                 st.session_state.result = None
                                 st.session_state.agent_message_history = []
                         st.rerun()
                 
                 with col2:
-                    if st.button("❌ Deny", key=f"deny_{call.tool_call_id}", use_container_width=True):
+                    if st.button(" Deny", key=f"deny_{call.tool_call_id}", use_container_width=True):
                         approval_data["approval_results"].approvals[call.tool_call_id] = ToolDenied(
                             "User has denied the request to execute the command. You must end this run immediately."
                         )
@@ -451,7 +437,7 @@ else:
             
             st.session_state.messages.append({"role": "assistant", "content": result.output})
             
-            with st.expander("📊 Usage Statistics"):
+            with st.expander(" Usage Statistics"):
                 usage = result.usage()
                 st.json({
                     "requests": usage.requests,
@@ -472,10 +458,10 @@ else:
             st.session_state.result = None
             st.rerun()
         else:
-            st.error(f"❌ Unexpected output type: {type(result.output)}")
+            st.error(f" Unexpected output type: {type(result.output)}")
             st.session_state.messages.append({
                 "role": "assistant", 
-                "content": f"❌ I encountered an unexpected output type: {type(result.output)}"
+                "content": f" I encountered an unexpected output type: {type(result.output)}"
             })
             st.session_state.result = None
             st.rerun()
@@ -509,10 +495,10 @@ else:
                         st.rerun()
                 except Exception as e:
                     error_msg = str(e)
-                    st.error(f"❌ Error during agent execution: {error_msg}")
+                    st.error(f" Error during agent execution: {error_msg}")
                     st.session_state.messages.append({
                         "role": "assistant",
-                        "content": f"❌ I encountered an error: {error_msg}"
+                        "content": f" I encountered an error: {error_msg}"
                     })
                     st.session_state.agent_message_history = []
                     st.rerun()

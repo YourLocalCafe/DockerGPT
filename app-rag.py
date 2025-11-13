@@ -20,19 +20,17 @@ import traceback  # For detailed error logging
 # Load environment variables
 load_dotenv()
 
-# --- ChromaDB Configuration ---
+
 DB_PATH = "./chroma_docker_db"
 COLLECTION_NAME = "docker_help"
 
-# # Configure logfire
+
 logfire.configure(token=getenv("LOGFIRE_WRITE_TOKEN"))
 logfire.instrument_pydantic_ai()
 
 
 class EventLoopThread:
-    """
-    A dedicated thread that runs an event loop.
-    """
+    
     def __init__(self):
         self.loop = None
         self.thread = None
@@ -56,9 +54,7 @@ class EventLoopThread:
         self._started = True
     
     def run_coroutine(self, coro: Coroutine) -> Any:
-        """
-        Run a coroutine in the event loop thread and return the result.
-        """
+        
         if not self._started:
             self.start()
         
@@ -66,7 +62,7 @@ class EventLoopThread:
         return future.result()
     
     def stop(self):
-        """Stop the event loop and thread."""
+        
         if self.loop and self._started:
             self.loop.call_soon_threadsafe(self.loop.stop)
             self.thread.join(timeout=5)
@@ -79,22 +75,12 @@ if "event_loop_thread" not in st.session_state:
 
 
 def run_async(coro: Coroutine) -> Any:
-    """
-    Run an async coroutine using the dedicated event loop thread.
-    """
+    
     return st.session_state.event_loop_thread.run_coroutine(coro)
 
 
 async def validate_google_api_key(api_key: str) -> tuple[bool, str]:
-    """
-    Validate Google API key by making a test request.
     
-    Args:
-        api_key: The Google API key to validate
-        
-    Returns:
-        tuple: (is_valid, error_message)
-    """
     try:
         test_model = GoogleModel(
             'gemini-2.5-flash',
@@ -117,7 +103,7 @@ async def validate_google_api_key(api_key: str) -> tuple[bool, str]:
         else:
             return False, f"Validation failed: {error_msg}"
 
-# --- Tool Definitions ---
+
 
 def gather_context(command: str) -> str:
     """
@@ -141,10 +127,7 @@ def gather_context(command: str) -> str:
 
 
 def get_chroma_collection():
-    """
-    Loads the ChromaDB collection.
-    This creates a new client per call, making it thread-safe.
-    """
+    
     if not os.path.exists(DB_PATH):
         return None
     try:
@@ -201,15 +184,12 @@ def search_docker_documentation(query: str) -> str:
 
 
 def get_dockerhub_token() -> str | None:
-    """
-    Fetches a JWT token from Docker Hub using credentials in session_state.
-    Caches the token in session_state.
-    """
-    # 1. Check for cached token
+    
+    
     if "dockerhub_jwt_token" in st.session_state:
         return st.session_state.dockerhub_jwt_token
     
-    # 2. If no cached token, check for credentials
+    
     username = st.session_state.get("dockerhub_username")
     pat = st.session_state.get("dockerhub_pat")
     
@@ -217,7 +197,7 @@ def get_dockerhub_token() -> str | None:
         print("No Docker Hub credentials provided. Proceeding with anonymous search.")
         return None
         
-    # 3. Fetch new token
+    # Fetch new token
     print("Fetching new Docker Hub JWT token...")
     try:
         login_url = "https://hub.docker.com/v2/users/login/"
@@ -230,7 +210,7 @@ def get_dockerhub_token() -> str | None:
             print("Login failed: 'token' not found in response.")
             return None
             
-        # 4. Cache and return token
+        
         st.session_state.dockerhub_jwt_token = token
         return token
         
@@ -251,7 +231,7 @@ def search_docker_hub(image_query: str) -> str:
     print(f"Searching Docker Hub (v2 API) for: {image_query}")
     headers = {"User-Agent": "DockerGPT-Streamlit-App"}
     
-    # Try to get auth token
+    
     jwt_token = get_dockerhub_token()
     if jwt_token:
         headers["Authorization"] = f"JWT {jwt_token}"
@@ -260,7 +240,7 @@ def search_docker_hub(image_query: str) -> str:
         print("Performing anonymous search.")
 
     try:
-        # Use the correct v2 search endpoint
+        
         search_url = "https://hub.docker.com/v2/search/repositories/"
         params = {'query': image_query, 'page_size': 5}
         
@@ -275,14 +255,14 @@ def search_docker_hub(image_query: str) -> str:
             print(f"--- Tool Output [search_docker_hub] ---\n{output}\n---------------------------------")
             return output
 
-        # Parse the new response structure
+        
         results = "--- Docker Hub Search Results ---\n"
-        for i, item in enumerate(search_results[:3]): # Get top 3
+        for i, item in enumerate(search_results[:3]): 
             name = item.get('repo_name')
             description = item.get('short_description', 'No description.')
             stars = item.get('star_count', 0)
             
-            # Add "library/" for official images if not present
+            
             if "/" not in name and "library" not in name:
                 name = f"library/{name}"
 
@@ -380,7 +360,7 @@ def read_file(filepath: str) -> str:
         print(f"--- Tool Error [read_file] ---\n{error_msg}\n---------------------------------")
         return error_msg
 
-# --- End of Tool Definitions ---
+
 
 
 def initialize_agent(model_choice, api_key=None):
@@ -494,7 +474,7 @@ def initialize_agent(model_choice, api_key=None):
         agent = Agent(
             model,
 
-            # --- MODIFICATION: Added README.md to prompt ---
+            
             system_prompt=[
                 'You are an expert Docker assistant. Your goal is to provide a single, final Docker command OR a complete `docker-compose.yaml` file.',
                 'You MUST gather all necessary information *before* providing the final answer. Do not guess or hallucinate file contents or image names.',
@@ -520,17 +500,17 @@ def initialize_agent(model_choice, api_key=None):
                 '   - The final output must ONLY be the command string or the YAML content.',
                 '   - Do not guess. If you lack information (e.g., `read_file` failed), ask the user for it.'
             ],
-            # --- END MODIFICATION ---
+            
 
             output_type=[str, DeferredToolRequests]
         )
-        # Add all tools for remote agent (except RAG)
+        
         agent.tool_plain(requires_approval=False)(search_docker_hub)
         agent.tool_plain(requires_approval=True)(list_directory)
         agent.tool_plain(requires_approval=True)(read_file)
 
     
-    # This tool (gather_context) is added for BOTH models
+    
     agent.tool_plain(requires_approval=True)(gather_context)
     return agent
 
@@ -568,10 +548,9 @@ if "dockerhub_pat" not in st.session_state:
 
 
 with st.sidebar:
-    st.title("🐳 DockerGPT")
+    st.title(" DockerGPT")
     st.markdown("---")
     
-    # st.info("Note: This app now uses the `requests` library. If you see an error, please run: `pip install requests`")
     
     if not st.session_state.model_selected:
         st.subheader("Model Selection")
@@ -585,14 +564,14 @@ with st.sidebar:
         st.markdown("---")
         
         if model_choice == "Local (Ollama)":
-            st.info("### 📋 Ollama Setup Instructions")
+            st.info("###  Ollama Setup Instructions")
             st.markdown("""
             **Installation:**
             1. Visit [ollama.ai](https://ollama.ai) to download Ollama
             2. Install and start Ollama
             3. Run: `ollama pull qwen3:1.7b`
             
-            **⚠️ Disclaimer:**
+            ** Disclaimer:**
             The qwen3:1.7b model (~1GB) will be downloaded automatically if not present. Ensure you have sufficient disk space and a stable internet connection.
             """)
 
@@ -600,16 +579,16 @@ with st.sidebar:
             
             st.markdown("RAG Database Setup")
             if os.path.exists(DB_PATH):
-                st.success(f"✅ Documentation DB found at `{DB_PATH}`.")
+                st.success(f" Documentation DB found at `{DB_PATH}`.")
             else:
-                st.error(f"❌ Documentation DB not found.")
+                st.error(f" Documentation DB not found.")
                 st.warning(f"Please run `python create_docker_db.py` in your terminal to build the local help database before initializing the agent.")
         
         elif model_choice == "Remote (Google Gemini)":
             st.markdown("### API Key Configuration")
             
             if st.session_state.api_key_invalid:
-                st.error("⚠️ Your current API key is invalid. Please enter a valid API key to continue.")
+                st.error(" Your current API key is invalid. Please enter a valid API key to continue.")
                 st.session_state.google_api_key = ""
                 st.session_state.api_key_validated = False
                 st.session_state.api_key_invalid = False
@@ -631,15 +610,15 @@ with st.sidebar:
                                 if is_valid:
                                     st.session_state.google_api_key = api_key_input
                                     st.session_state.api_key_validated = True
-                                    st.success(f"✅ {message}")
+                                    st.success(f" {message}")
                                 else:
-                                    st.error(f"❌ {message}")
+                                    st.error(f" {message}")
                                     st.session_state.api_key_validated = False
                             except Exception as e:
-                                st.error(f"❌ Validation error: {str(e)}")
+                                st.error(f" Validation error: {str(e)}")
                                 st.session_state.api_key_validated = False
             else:
-                st.success("✅ API Key validated")
+                st.success(" API Key validated")
                 if st.button("Update API Key"):
                     st.session_state.show_api_key_input = True
                 
@@ -664,9 +643,9 @@ with st.sidebar:
                                             st.success("API Key validated and updated!")
                                             st.rerun()
                                         else:
-                                            st.error(f"❌ {message}")
+                                            st.error(f" {message}")
                                     except Exception as e:
-                                        st.error(f"❌ Validation error: {str(e)}")
+                                        st.error(f" Validation error: {str(e)}")
                             else:
                                 st.error("Please enter a valid API key")
                     with col2:
@@ -693,25 +672,25 @@ with st.sidebar:
                     except Exception as e:
                         error_msg = str(e)
                         if "API_KEY_INVALID" in error_msg or "invalid" in error_msg.lower():
-                            st.error("❌ API key is invalid. Please update your API key.")
+                            st.error(" API key is invalid. Please update your API key.")
                             st.session_state.api_key_invalid = True
                             st.session_state.api_key_validated = False
                             st.rerun()
                         elif "No module named 'requests'" in error_msg:
-                            st.error("❌ Missing dependency. Please run `pip install requests` in your terminal.")
+                            st.error(" Missing dependency. Please run `pip install requests` in your terminal.")
                         else:
                             st.error(f"Failed to initialize agent: {error_msg}")
         
         elif model_choice == "Local (Ollama)":
-             st.warning("⚠️ Please run `create_docker_db.py` to build the local database.")
+             st.warning(" Please run `create_docker_db.py` to build the local database.")
         elif model_choice == "Remote (Google Gemini)":
             if not st.session_state.google_api_key:
-                st.warning("⚠️ Please enter your Google API Key to continue")
+                st.warning(" Please enter your Google API Key to continue")
             else:
-                st.warning("⚠️ Please validate your Google API Key to continue")
+                st.warning(" Please validate your Google API Key to continue")
 
     else:
-        st.success("✅ Agent Ready")
+        st.success(" Agent Ready")
         
         if st.session_state.model_choice == "Remote (Google Gemini)":
             if st.button("Update API Key"):
@@ -738,9 +717,9 @@ with st.sidebar:
                                         st.info("API Key validated and updated. Reset agent to use the new key.")
                                         st.rerun()
                                     else:
-                                        st.error(f"❌ {message}")
+                                        st.error(f" {message}")
                                 except Exception as e:
-                                    st.error(f"❌ Validation error: {str(e)}")
+                                    st.error(f" Validation error: {str(e)}")
                         else:
                             st.error("Please enter a valid API key")
                 with col2:
@@ -769,11 +748,11 @@ with st.sidebar:
     The agent may request permission to read files or gather context from your environment.
     """)
 
-# Main chat interface
+#  Chat interface
 st.title("DockerGPT")
 
 if not st.session_state.model_selected:
-    st.info("👈 Please select and initialize a model from the sidebar to begin.")
+    st.info(" Please select and initialize a model from the sidebar to begin.")
 else:
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
@@ -782,7 +761,7 @@ else:
     if st.session_state.pending_approval:
         approval_data = st.session_state.pending_approval
         
-        st.warning("⚠️ The agent is requesting permission to run tools:")
+        st.warning(" The agent is requesting permission to run tools:")
         
         with st.container(border=True):
             for call in approval_data["requests"].approvals:
@@ -795,7 +774,7 @@ else:
 
             col1, col2 = st.columns([1, 1])
             with col1:
-                if st.button("✅ Approve All", key=f"approve_all", type="primary", use_container_width=True):
+                if st.button(" Approve All", key=f"approve_all", type="primary", use_container_width=True):
                     for call in approval_data["requests"].approvals:
                         approval_data["approval_results"].approvals[call.tool_call_id] = True
                     
@@ -816,17 +795,17 @@ else:
                             traceback.print_exc() 
                             error_msg = f"**Type:** `{type(e).__name__}`\n\n**Details:** `{str(e)}`\n\n**Repr:** `{repr(e)}`"
                             
-                            st.error(f"❌ Error during agent execution: \n{error_msg}")
+                            st.error(f" Error during agent execution: \n{error_msg}")
                             st.session_state.messages.append({
                                 "role": "assistant", 
-                                "content": f"❌ I encountered an error: \n{error_msg}"
+                                "content": f" I encountered an error: \n{error_msg}"
                             })
                             st.session_state.result = None
                             st.session_state.agent_message_history = []
                     st.rerun()
             
             with col2:
-                if st.button("❌ Deny All", key=f"deny_all", use_container_width=True):
+                if st.button(" Deny All", key=f"deny_all", use_container_width=True):
                     for call in approval_data["requests"].approvals:
                         approval_data["approval_results"].approvals[call.tool_call_id] = ToolDenied(
                             "User has denied the request to execute the command(s)."
@@ -867,7 +846,7 @@ else:
             # Add the final assistant output
             st.session_state.messages.append({"role": "assistant", "content": result.output})
             
-            with st.expander("📊 Usage Statistics"):
+            with st.expander(" Usage Statistics"):
                 usage = result.usage()
                 st.json({
                     "requests": usage.requests,
@@ -898,10 +877,10 @@ else:
             st.session_state.result = None
             st.rerun()
         else:
-            st.error(f"❌ Unexpected output type: {type(result.output)}")
+            st.error(f" Unexpected output type: {type(result.output)}")
             st.session_state.messages.append({
                 "role": "assistant", 
-                "content": f"❌ I encountered an unexpected output type: {type(result.output)}"
+                "content": f" I encountered an unexpected output type: {type(result.output)}"
             })
             st.session_state.result = None
             st.rerun()
@@ -948,10 +927,10 @@ else:
                     traceback.print_exc() 
                     error_msg = f"**Type:** `{type(e).__name__}`\n\n**Details:** `{str(e)}`\n\n**Repr:** `{repr(e)}`"
 
-                    st.error(f"❌ Error during agent execution: \n{error_msg}")
+                    st.error(f" Error during agent execution: \n{error_msg}")
                     st.session_state.messages.append({
                         "role": "assistant", 
-                        "content": f"❌ I encountered an error: \n{error_msg}"
+                        "content": f" I encountered an error: \n{error_msg}"
                     })
                     st.session_state.agent_message_history = []
                     st.rerun()
