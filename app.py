@@ -10,8 +10,7 @@ from os import getenv
 import logfire
 import asyncio
 import threading
-from queue import Queue
-from typing import Any, Callable, Coroutine
+from typing import Any, Coroutine
 
 # Load environment variables
 load_dotenv()
@@ -205,6 +204,7 @@ with st.sidebar:
         )
         
         st.session_state.model_choice = model_choice
+        st.markdown("---")
         
         if model_choice == "Local (Ollama)":
             st.info("### 📋 Ollama Setup Instructions")
@@ -511,7 +511,7 @@ else:
                     error_msg = str(e)
                     st.error(f"❌ Error during agent execution: {error_msg}")
                     st.session_state.messages.append({
-                        "role": "assistant", 
+                        "role": "assistant",
                         "content": f"❌ I encountered an error: {error_msg}"
                     })
                     st.session_state.agent_message_history = []
