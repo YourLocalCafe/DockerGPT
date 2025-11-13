@@ -451,16 +451,6 @@ else:
             
             st.session_state.messages.append({"role": "assistant", "content": result.output})
             
-            with st.expander("📊 Usage Statistics"):
-                usage = result.usage()
-                st.json({
-                    "requests": usage.requests,
-                    "request_tokens": usage.request_tokens,
-                    "response_tokens": usage.response_tokens,
-                    "total_tokens": usage.total_tokens,
-                    "details": str(usage.details) if usage.details else None
-                })
-            
             st.session_state.result = None
             st.rerun()
         elif isinstance(result.output, DeferredToolRequests):
